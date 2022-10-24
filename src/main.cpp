@@ -12,7 +12,9 @@
 unsigned long Ch_time[6];
 unsigned long A_time, TimeLastSent;
 int value[6];
-bool send = 0;
+bool Send = 0;
+byte FreioCntD, FreioCntE;
+esp_err_t SendStatus;
 
 // uint8_t broadcastAddress[3][6] = {{0xCC, 0x50, 0xE3, 0x56, 0xAD, 0xF4}, // Alley
 //                                   {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
@@ -51,9 +53,13 @@ typedef struct struct_message
   int arma_vel;
   /// Primeiro indice é o led, o segundo são os valores de RGB (0-255 cada)
   byte led[2][3];
+  /// 1 para ativo 0 caso contrario
+  bool FreioE;
+  bool FreioD;
 } struct_message;
 
 struct_message Controle;
+struct_message LastControle;
 
 void IRAM_ATTR CH0();
 void IRAM_ATTR CH1();
@@ -67,10 +73,9 @@ void CH0()
 {
   unsigned long time = micros();
   if (digitalRead(4))
-  {
+
     Ch_time[0] = time;
-    send = 1;
-  }
+
   else if (Ch_time[0] < time)
     value[0] = map(constrain(time - Ch_time[0], 1000, 2000), 1000, 2000, 0, 255);
 }
@@ -110,7 +115,10 @@ void CH5()
 {
   unsigned long time = micros();
   if (digitalRead(19))
+  {
     Ch_time[5] = time;
+    Send = 1;
+  }
   else if (Ch_time[5] < time)
     value[5] = map(constrain(time - Ch_time[5], 1000, 2000), 1000, 2000, 0, 255);
 }
@@ -119,8 +127,8 @@ void CH5()
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
   Serial.print(status == ESP_NOW_SEND_SUCCESS ? "1" : "0");
-  if (status != ESP_NOW_SEND_SUCCESS && millis() - TimeLastSent < 15)
-    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+  // if (status != ESP_NOW_SEND_SUCCESS && millis() - TimeLastSent < 15)
+  //   esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
   Serial.println();
 }
 /// Calibrar valores recebidos do controle
@@ -213,20 +221,31 @@ void PoliceEffectLed()
 void ConstrainArma()
 {
   if (value[4])
-    Controle.arma_vel = constrain(map(value[2], 0, 255, 1500, 1850), 1500, 1850);
+    Controle.arma_vel = constrain(map(value[2], 0, 255, 1500, 2000), 1500, 2000);
   else
-    Controle.arma_vel = constrain(map(value[2], 0, 255, 1500, 1150), 1150, 1500);
+    Controle.arma_vel = constrain(map(value[2], 0, 255, 1500, 1000), 1000, 1500);
 
   if (abs(Controle.arma_vel - 1500) < 50)
     Controle.arma_vel = 1500;
 }
+/// Identifica entrada na DeadZone para freiar brevemente
+void Freio()
+{
+  if (Controle.motor_d == 0 && FreioCntD < 10)
+    FreioCntD++;
+  else
+    FreioCntD = 0;
+  Controle.FreioD = (FreioCntD > 0 ? true : false);
+
+  if (Controle.motor_e == 0 && FreioCntE < 10)
+    FreioCntE++;
+  else
+    FreioCntE = 0;
+  Controle.FreioD = (FreioCntE > 0 ? true : false);
+}
 
 void setup()
 {
-  WiFi.enableLongRange(true);
-  // WiFi.initiateFTM();
-  // esp_now_mod_peer();
-
   Serial.begin(115200);
   WiFi.mode(WIFI_STA);
 
@@ -245,7 +264,7 @@ void setup()
     return;
   }
 
-  esp_now_register_send_cb(OnDataSent);
+  // esp_now_register_send_cb(OnDataSent);
 
   attachInterrupt(digitalPinToInterrupt(4), CH0, CHANGE);
   attachInterrupt(digitalPinToInterrupt(16), CH1, CHANGE);
@@ -257,19 +276,39 @@ void setup()
 
 void loop()
 {
-  if (send)
+  if (Send)
   {
     delay(2);
+    LastControle = Controle;
     CalibrateValues();
     ConverterMotores(value[0], value[1]);
     LimitarMotores();
+    Freio();
     ConstrainArma();
     PoliceEffectLed();
 
-    send = 0;
-    TimeLastSent = millis();
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
     esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
 
+    Send = 0;
+    TimeLastSent = millis();
+
+    //    do // so funciona com MAC do robo certo, mas com o certo, tem delay
+    //    {
+    //      SendStatus = esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    //      Serial.print(SendStatus == ESP_OK ? "1" : "0");
+    //    } while (SendStatus != ESP_OK && millis() - TimeLastSent < 15);
+    //    Serial.println();
     /*
         Serial.print(value[0]);
         Serial.print("  ");
@@ -284,12 +323,11 @@ void loop()
         Serial.print(value[5]);
         Serial.println("  ");
 
-
-            Serial.print(Controle.motor_e);
-            Serial.print("  ");
-            Serial.print(Controle.motor_d);
-            Serial.print("  ");
-            Serial.println(Controle.arma_vel);
-            */
+        Serial.print(Controle.motor_e);
+        Serial.print("  ");
+        Serial.print(Controle.motor_d);
+        Serial.print("  ");
+        Serial.println(Controle.arma_vel);
+        */
   }
 }
