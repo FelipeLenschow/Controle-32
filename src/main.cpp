@@ -5,9 +5,9 @@
 #include <ESPmDNS.h>
 #include <math.h>
 
-#define QuarterPi 0.78539816339
-#define HalfPi 1.57079632679
-#define ThreeQuarterPi 2.35619449019
+#define QuarterPi 0.78539
+#define HalfPi 1.57079
+#define ThreeQuarterPi 2.35619
 
 unsigned long Ch_time[6];
 unsigned long A_time, TimeLastSent;
@@ -18,10 +18,11 @@ esp_err_t SendStatus;
 
 // uint8_t broadcastAddress[3][6] = {{0xCC, 0x50, 0xE3, 0x56, 0xAD, 0xF4}, // Alley
 //                                   {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
-//                                   {0x60, 0x01, 0x94, 0x0F, 0x8A, 0xD3}}; // 60:01:94:0F:8A:D3
+//                                   {0x60, 0x01, 0x94, 0x0F, 0x8A, 0xD3}};
 //  uint8_t broadcastAddress[][6] = {};
 uint8_t broadcastAddress[][6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Broadcast
 // uint8_t broadcastAddress[][6] = {0x48, 0x55, 0x19, 0x00, 0x4A, 0xAF}; // D1?
+
 esp_now_peer_info_t peerInfo;
 
 // Velocidade da reprodução dos leds
@@ -157,51 +158,43 @@ void Save2send(float Angle, int vel)
 /// Converter valores para direção do motor
 void ConverterMotores(signed int X, signed int Y)
 {
-
-  if (X != 0)
+  X = X == 0 ? 1 : X;
+  float Angle = atan((float)Y / (float)X);
+  if (X < 0)
   {
-    double YdX = 1000 * Y / X;
-    float Angle = atan(YdX / 1000);
-    if (X < 0)
-    {
-      if (Y > 0)
-        Angle += PI;
-      else
-        Angle -= PI;
-    }
-
-    float Module = sqrt(X * X + Y * Y);
-    float Vel = Module * Module / 255;
-    signed int Max_Y = 0;
-    signed int Max_X = 0;
-
-    if (abs(X) > abs(Y))
-    {
-      Max_X = 255;
-      Max_Y = 255 * tan(Angle);
-    }
+    if (Y > 0)
+      Angle += PI;
     else
-    {
-      Max_Y = 255;
-      Max_X = 255 / tan(Angle);
-    }
-
-    int Max_Vel = sqrt(Max_X * Max_X + Max_Y * Max_Y);
-    int vel = constrain(255 * Vel / Max_Vel, 0, 255);
-
-    Save2send(Angle, vel);
+      Angle -= PI;
   }
+
+  float Module = sqrt(X * X + Y * Y);
+
+  float Vel = Module * Module / 255;
+  int Max_Vel = (abs(X) > abs(Y)) ? 255 / abs(cos(Angle)) : 255 / abs(sin(Angle));
+  int vel = constrain(255 * Vel / Max_Vel, 0, 255);
+  Save2send(Angle, vel);
 }
 /// DeadZone e Limite de velocidade
 void LimitarMotores()
 {
-  if (abs(Controle.motor_d) > 0)
-    Controle.motor_d = map(Controle.motor_d, 0, 255, 60, 255);
+  if (abs(Controle.motor_d) > 30)
+  {
+    if (Controle.motor_d > 0)
+      Controle.motor_d = map(Controle.motor_d, 0, 255, 60, 255);
+    else
+      Controle.motor_d = map(Controle.motor_d, 0, -255, -60, -255);
+  }
   else
     Controle.motor_d = 0;
 
-  if (abs(Controle.motor_e) > 0)
-    Controle.motor_e = map(Controle.motor_e, 0, 255, 60, 255);
+  if (abs(Controle.motor_e) > 30)
+  {
+    if (Controle.motor_e > 0)
+      Controle.motor_e = map(Controle.motor_e, 0, 255, 60, 255);
+    else
+      Controle.motor_e = map(Controle.motor_e, 0, -255, -60, -255);
+  }
   else
     Controle.motor_e = 0;
 }
@@ -271,7 +264,7 @@ void setup()
 
   // Register peer
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;
+  peerInfo.channel = 1;
   peerInfo.encrypt = false;
 
   // Add peer
@@ -311,9 +304,10 @@ void loop()
     esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
     esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
     esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
+    esp_now_send(broadcastAddress[0], (uint8_t *)&Controle, sizeof(Controle));
 
     Send = 0;
-    TimeLastSent = millis();
+    // TimeLastSent = millis();
 
     //    do // so funciona com MAC do robo certo, mas com o certo, tem delay
     //    {
@@ -334,7 +328,7 @@ void loop()
         Serial.print("  ");
         Serial.print(value[5]);
         Serial.println("  ");
-*/
+
     Serial.print(Controle.motor_e);
     Serial.print("  ");
     Serial.print(Controle.motor_d);
@@ -344,5 +338,6 @@ void loop()
     Serial.print(Controle.FreioE);
     Serial.print("  ");
     Serial.println(Controle.arma_vel);
+    */
   }
 }
